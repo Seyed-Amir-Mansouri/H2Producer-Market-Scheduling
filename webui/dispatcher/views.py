@@ -31,11 +31,6 @@ _COUNTRY_NAMES = {
     "SK": "Slovakia",
 }
 
-# Hydrogen Producer per-country capacity table: one row per eligible
-# country, one editable field per asset. ``key`` is both the JSON column
-# name and, combined with a country code, the POSTed field name
-# (``h2p_{key}_{country}``); ``config_field`` is the matching RunConfig
-# ``h2_producer_*_mw_overrides`` dict it feeds.
 H2_PRODUCER_ASSET_KEYS = [
     {"key": "electrolyser", "label": "Electrolyser (MW)", "config_field": "h2_producer_electrolyser_mw_overrides"},
     {"key": "wind", "label": "Wind (MW)", "config_field": "h2_producer_wind_mw_overrides"},
@@ -176,10 +171,6 @@ def run_dispatch(request):
 
     h2p_overrides, h2p_submitted, h2p_errors = _parse_h2_producer_table(
         request.POST, list(_h2_producer_country_defaults()))
-    # Redisplay whatever the user typed either way, but only block the run
-    # (and only apply the overrides below) on a bad number if the Producer is
-    # actually enabled -- a typo in a hidden, unused panel shouldn't stop an
-    # otherwise-valid run.
     if enable_h2_producer:
         errors += h2p_errors
 

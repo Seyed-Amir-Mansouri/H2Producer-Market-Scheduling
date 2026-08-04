@@ -509,16 +509,6 @@ def _build_h2_producer(m: linopy.Model, zdata: dict[str, ZoneData], zones: list[
     tank_mw_vec = np.array([sizing[c]["tank_mw"] for c in pidx])
     tank_mwh_vec = np.array([sizing[c]["tank_mwh"] for c in pidx])
 
-    # Wind/PV weather data: normally the host (main H2) zone's own profile,
-    # but some countries' main H2 zone is an H2-hub node with zero installed
-    # wind/solar capacity and an all-zero profile of its own (BEOF, LUB1,
-    # NLLL) even though the country has real data at a sibling zone (BE00,
-    # LUG1, NL00). Fall back to whichever same-country zone -- always
-    # co-loaded here via config._expand_to_countries, so its data is already
-    # in ``zdata`` -- has real data and the largest installed capacity for
-    # that tech, independently for wind and solar. Checked against the FULL
-    # stored year (not just this run's own hours) so the choice can't flip
-    # on a single calm/cloudy day. See §18.2.
     profile_info = _h2_producer_renewable_profile_info(str(cfg.zones_db))
 
     def _has_data(z: str, resource_idx: int) -> bool:
@@ -539,13 +529,6 @@ def _build_h2_producer(m: linopy.Model, zdata: dict[str, ZoneData], zones: list[
     wind_donor = [_donor_zone(c, countries[c], 0, "Wind (onshore) (MW)") for c in pidx]
     pv_donor = [_donor_zone(c, countries[c], 1, "Solar (MW)") for c in pidx]
 
-    # Normalize each selected donor's raw capacity-factor profile by its OWN
-    # full-year historical max, so the profile's peak becomes exactly 1.0 --
-    # otherwise an assigned nameplate MW rating could never actually be
-    # reached, since these raw NT2030 profiles top out well below 1.0 (e.g.
-    # DE00 wind: 0.83; NL00 solar: 0.44) even at their single best hour of
-    # the year. Guards against a zero denominator for a donor with no data
-    # (falls back to the host zone with an all-zero profile either way).
     wind_max_vec = np.array([max(_profile_max(z, 0), 1e-9) for z in wind_donor])
     pv_max_vec = np.array([max(_profile_max(z, 1), 1e-9) for z in pv_donor])
 
@@ -553,14 +536,6 @@ def _build_h2_producer(m: linopy.Model, zdata: dict[str, ZoneData], zones: list[
         return np.vstack([_num(zdata[z].profiles[col].to_numpy()) if col in zdata[z].profiles
                           else np.zeros(H) for z in zone_list])
 
-    # Downstream demand is flat and defined directly off the assigned
-    # electrolyser's own H2-equivalent capacity, so it can never need
-    # rescaling to fit: baseline = h2_producer_downstream_demand_pct_of_
-    # electrolyser_capacity (default 80%) of capacity_h2 = electrolyser_mw *
-    # efficiency, every hour, with the flex band applied as +/-
-    # h2_producer_demand_flex_pct of that SAME capacity (not of the baseline
-    # itself) -- defaults span demand from 60% to 100% of deliverable
-    # capacity. See §18.2/§18.6.
     ely_eff_scalar = cfg.h2_producer_electrolyser_efficiency
     capacity_h2_vec = ely_cap_vec * ely_eff_scalar
     demand_pct = cfg.h2_producer_downstream_demand_pct_of_electrolyser_capacity
@@ -623,20 +598,6 @@ def _build_h2_producer(m: linopy.Model, zdata: dict[str, ZoneData], zones: list[
     m.add_constraints(prod_ely_ren <= prod_wind_p + prod_pv_p, name="prod_ely_ren_cap_avail")
     m.add_constraints(prod_ely_ren <= prod_ely_p, name="prod_ely_ren_cap_ely")
 
-    # Green Certificates: unbundled, non-hourly-matched, two-directional.
-    # BUY tops up e_ren above -- buys the right to relabel grid-sourced
-    # electrolyser load as renewable, capped by how much electrolyser load
-    # actually WASN'T already onsite-renewable that hour (a GC re-labels real
-    # consumption, it doesn't conjure free hydrogen). SELL monetizes onsite
-    # wind+PV generation that WASN'T claimed for the country's own e_ren
-    # compliance (surplus/exported generation still earns a separate
-    # certificate, exactly like a real GO market) -- it does not touch this
-    # country's own compliance math, since by construction it can only draw on
-    # generation e_ren was never entitled to anyway. Both are horizon-total,
-    # since a certificate carries no timestamp of its own; buying and selling
-    # in the same run is realistic (independent transactions against
-    # independent MWh, not an arbitrage loop) rather than a modelling
-    # artifact, since they draw from disjoint, hour-by-hour-determined pools.
     prod_gc_buy = m.add_variables(lower=0.0, coords=[pidx], name="prod_gc_buy")
     prod_gc_sell = m.add_variables(lower=0.0, coords=[pidx], name="prod_gc_sell")
     m.add_constraints(
