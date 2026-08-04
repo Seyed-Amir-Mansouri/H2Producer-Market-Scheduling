@@ -1,0 +1,131 @@
+{% extends "dispatcher/base.html" %}
+{% block title %}CORE Dispatch{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{% url 'dispatcher:index' %}">&larr; New run</a>
+
+<div class="panel" style="margin-top:16px;">
+  <h2>Run</h2>
+  <p>
+    Zones: {% for z in zones %}<code>{{ z }}</code>{% if not forloop.last %} {% endif %}{% endfor %}
+    &middot; {{ start_date }} &rarr; {{ end_date }} (day {{ start_day }}&ndash;{{ end_day }} of {{ year }})
+  </p>
+  {% if auto_added %}
+    <p class="note">Auto-added (siblings of your selection, same country):
+      {% for z in auto_added %}<code>{{ z }}</code>{% if not forloop.last %} {% endif %}{% endfor %}
+    </p>
+  {% endif %}
+  <p class="note">Hydrogen Producer: {% if enable_h2_producer %}<strong>ON</strong>{% else %}off{% endif %}</p>
+</div>
+
+{% if enable_h2_producer %}
+<div class="panel">
+  <h2>Hydrogen Producer</h2>
+  {% if h2_producer_summary %}
+    <div class="h2p-summary">
+      <div class="stat">
+        <span class="v">{% if h2_producer_summary.renewable_h2_share != None %}{{ h2_producer_summary.renewable_h2_share|floatformat:3 }}{% else %}&mdash;{% endif %}</span>
+        <span class="k">RED III renewable-H2 share</span>
+      </div>
+      <div class="stat">
+        <span class="v">{% if h2_producer_summary.gc_purchased_mwh != None %}{{ h2_producer_summary.gc_purchased_mwh|floatformat:1 }}{% else %}&mdash;{% endif %}</span>
+        <span class="k">Green Certificates bought (MWh)</span>
+      </div>
+      <div class="stat">
+        <span class="v">{% if h2_producer_summary.gc_sold_mwh != None %}{{ h2_producer_summary.gc_sold_mwh|floatformat:1 }}{% else %}&mdash;{% endif %}</span>
+        <span class="k">Green Certificates sold (MWh)</span>
+      </div>
+    </div>
+  {% endif %}
+  {% if h2_producer_assets %}
+    <table class="metrics" style="margin-top:16px;">
+      <thead><tr>
+        <th>Country</th><th>Zone</th><th>Electrolyser (MW)</th><th>Wind (MW)</th><th>PV (MW)</th>
+        <th>Wind donor</th><th>PV donor</th><th>Battery (MW / MWh)</th><th>H2 tank (MW / MWh)</th>
+      </tr></thead>
+      <tbody>
+        {% for a in h2_producer_assets %}
+          <tr>
+            <td class="zone-name">{{ a.country }}</td>
+            <td>{{ a.zone }}</td>
+            <td>{{ a.electrolyser_mw|floatformat:1 }}</td>
+            <td>{{ a.wind_mw|floatformat:1 }}</td>
+            <td>{{ a.pv_mw|floatformat:1 }}</td>
+            <td>{{ a.wind_donor_zone }}</td>
+            <td>{{ a.pv_donor_zone }}</td>
+            <td>{{ a.battery_mw|floatformat:1 }} / {{ a.battery_mwh|floatformat:1 }}</td>
+            <td>{{ a.tank_mw|floatformat:1 }} / {{ a.tank_mwh|floatformat:1 }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="note">No qualifying country in this zone selection.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2>Electricity metrics</h2>
+  <table class="metrics">
+    <thead><tr>
+      <th>Zone</th><th>corr (excl. scarcity)</th><th>RMSE</th><th>Mean diff</th>
+      <th>corr (all hrs)</th><th>Scarcity hrs (ours)</th><th>Scarcity hrs (PLEXOS)</th><th>Real shed hrs</th>
+    </tr></thead>
+    <tbody>
+      {% for r in zone_results %}
+        <tr>
+          <td class="zone-name">{{ r.zone }}</td>
+          {% with m=r.metrics_e %}
+            <td>{% if m.corr_excl != None %}{{ m.corr_excl|floatformat:4 }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if m.rmse_excl != None %}{{ m.rmse_excl|floatformat:2 }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if m.mean_diff != None %}{{ m.mean_diff|floatformat:2 }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if m.corr_all != None %}{{ m.corr_all|floatformat:4 }}{% else %}&mdash;{% endif %}</td>
+            <td>{{ m.n_hi_ours|default:"—" }}</td>
+            <td>{{ m.n_hi_plexos|default:"—" }}</td>
+            <td>{{ m.real_shed_hours }}</td>
+          {% endwith %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Hydrogen metrics</h2>
+  <table class="metrics">
+    <thead><tr>
+      <th>Zone</th><th>corr (excl. scarcity)</th><th>RMSE</th><th>Mean diff</th>
+      <th>corr (all hrs)</th><th>Scarcity hrs (ours)</th><th>Scarcity hrs (PLEXOS)</th><th>Real shed hrs</th>
+    </tr></thead>
+    <tbody>
+      {% for r in zone_results %}
+        <tr>
+          <td class="zone-name">{{ r.zone }}</td>
+          {% with m=r.metrics_h %}
+            <td>{% if m.corr_excl != None %}{{ m.corr_excl|floatformat:4 }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if m.rmse_excl != None %}{{ m.rmse_excl|floatformat:2 }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if m.mean_diff != None %}{{ m.mean_diff|floatformat:2 }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if m.corr_all != None %}{{ m.corr_all|floatformat:4 }}{% else %}&mdash;{% endif %}</td>
+            <td>{{ m.n_hi_ours|default:"—" }}</td>
+            <td>{{ m.n_hi_plexos|default:"—" }}</td>
+            <td>{{ m.real_shed_hours }}</td>
+          {% endwith %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% for r in zone_results %}
+  <div class="panel">
+    <h2>{{ r.zone }} &mdash; Electricity price vs. PLEXOS</h2>
+    {{ r.plot_e|safe }}
+  </div>
+  <div class="panel">
+    <h2>{{ r.zone }} &mdash; Hydrogen price vs. PLEXOS</h2>
+    {{ r.plot_h|safe }}
+  </div>
+{% endfor %}
+
+{% endblock %}

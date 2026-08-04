@@ -1,0 +1,166 @@
+{% extends "dispatcher/base.html" %}
+{% load static %}
+{% block title %}CORE Dispatch{% endblock %}
+{% block content %}
+
+{% if errors %}
+  <div class="errors">
+    <strong>Fix before running:</strong>
+    <ul>
+      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<form method="post" action="{% url 'dispatcher:run' %}">
+  {% csrf_token %}
+
+  <div class="panel">
+    <h2>Zones / countries</h2>
+    <div class="country-grid">
+      {% for country in country_groups %}
+        <details class="country-group" open>
+          <summary>
+            <img class="country-map" src="{% static country.map_path %}" alt="{{ country.code }} map">
+            <span class="country-name">{{ country.name }}</span>
+          </summary>
+          {% for z in country.zones %}
+            <div class="zone-check">
+              <input type="checkbox" id="zone-{{ z }}" name="zones" value="{{ z }}"
+                     {% if z in selected_zones %}checked{% endif %}>
+              <label for="zone-{{ z }}">{{ z }}</label>
+            </div>
+          {% endfor %}
+        </details>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head-row">
+      <label class="switch">
+        <input type="checkbox" id="enable_h2_producer" name="enable_h2_producer"
+               {% if enable_h2_producer %}checked{% endif %}>
+        <span class="slider"></span>
+      </label>
+      <h2>Hydrogen Producer</h2>
+    </div>
+
+    <div id="h2p-fields" class="h2p-fields{% if not enable_h2_producer %} hidden{% endif %}">
+      <table class="metrics" id="h2p-table">
+        <thead><tr>
+          <th>Country</th>
+          {% for f in h2_producer_asset_keys %}<th>{{ f.label }}</th>{% endfor %}
+        </tr></thead>
+        <tbody id="h2p-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Time range ({{ year }})</h2>
+    <div class="date-row">
+      <div class="field">
+        <label for="start_date">Start date</label>
+        <input type="date" id="start_date" name="start_date" min="{{ year }}-01-01" max="{{ year }}-12-31"
+               value="{{ start_date|default:'2030-01-01' }}" required>
+      </div>
+      <div class="field">
+        <label for="end_date">End date</label>
+        <input type="date" id="end_date" name="end_date" min="{{ year }}-01-01" max="{{ year }}-12-31"
+               value="{{ end_date|default:'2030-01-07' }}" required>
+      </div>
+    </div>
+    <p class="note">The dataset models a 364-day year (52 weeks); Dec 31 maps to the last modelled day.</p>
+  </div>
+
+  <button class="run" type="submit">Run dispatch</button>
+</form>
+
+<script type="application/json" id="h2p-defaults-blob">{{ h2_producer_defaults_json|safe }}</script>
+<script type="application/json" id="h2p-submitted-blob">{{ h2_producer_submitted_json|safe }}</script>
+
+<div id="processing-overlay">
+  <div class="processing-box">
+    <div class="spinner"></div>
+    <p>Solving dispatch&hellip;</p>
+  </div>
+</div>
+
+<style>
+  #processing-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(244,246,250,.85);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  #processing-overlay.visible { display: flex; }
+  .processing-box { text-align: center; color: var(--text); }
+  .processing-box p { margin: 14px 0 0; font-size: 14.5px; color: var(--muted); }
+  .spinner {
+    width: 40px; height: 40px; margin: 0 auto; border-radius: 50%;
+    border: 4px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+  document.querySelector("form").addEventListener("submit", function () {
+    document.getElementById("processing-overlay").classList.add("visible");
+  });
+
+  const h2pCheckbox = document.getElementById("enable_h2_producer");
+  const h2pFields = document.getElementById("h2p-fields");
+  h2pCheckbox.addEventListener("change", function () {
+    h2pFields.classList.toggle("hidden", !h2pCheckbox.checked);
+  });
+
+  // Per-country Hydrogen Producer capacity table: one row per country with
+  // at least one zone checked above, pre-filled with that country's own
+  // model-derived default (editable) -- rows are added/removed live as
+  // zones are (un)checked, without touching rows that stay selected (so a
+  // typed-in value survives toggling some OTHER country's zone).
+  const H2P_DEFAULTS = JSON.parse(document.getElementById("h2p-defaults-blob").textContent);
+  const H2P_SUBMITTED = JSON.parse(document.getElementById("h2p-submitted-blob").textContent);
+  const H2P_ASSET_KEYS = [{% for f in h2_producer_asset_keys %}"{{ f.key }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+  const h2pTbody = document.getElementById("h2p-tbody");
+
+  function h2pSelectedCountries() {
+    const set = new Set();
+    document.querySelectorAll('input[name="zones"]:checked').forEach(cb => {
+      const country = cb.value.slice(0, 2);
+      if (H2P_DEFAULTS[country]) set.add(country);
+    });
+    return set;
+  }
+
+  function h2pAddRow(country) {
+    const info = H2P_DEFAULTS[country];
+    const submitted = H2P_SUBMITTED[country] || {};
+    const tr = document.createElement("tr");
+    tr.dataset.country = country;
+    let html = `<td class="zone-name">${info.name} (${info.zone})</td>`;
+    H2P_ASSET_KEYS.forEach(key => {
+      const val = submitted[key] !== undefined ? submitted[key] : info[key];
+      html += `<td><input type="number" step="0.1" min="0" name="h2p_${key}_${country}" value="${val}"></td>`;
+    });
+    tr.innerHTML = html;
+    const after = Array.from(h2pTbody.children)
+      .find(r => H2P_DEFAULTS[r.dataset.country].name > info.name);
+    if (after) h2pTbody.insertBefore(tr, after);
+    else h2pTbody.appendChild(tr);
+  }
+
+  function h2pSyncTable() {
+    const wanted = h2pSelectedCountries();
+    const current = new Set(Array.from(h2pTbody.children).map(tr => tr.dataset.country));
+    current.forEach(c => { if (!wanted.has(c)) h2pTbody.querySelector(`tr[data-country="${c}"]`).remove(); });
+    wanted.forEach(c => { if (!current.has(c)) h2pAddRow(c); });
+  }
+
+  document.querySelector(".country-grid").addEventListener("change", function (e) {
+    if (e.target.name === "zones") h2pSyncTable();
+  });
+
+  h2pSyncTable();
+</script>
+
+{% endblock %}
