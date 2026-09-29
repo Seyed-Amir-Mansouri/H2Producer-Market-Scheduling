@@ -2,7 +2,7 @@
 
 Examples
 --------
-    python run_dispatch.py                                   # all 23 zones, day 1
+    python run_dispatch.py                                   # all 20 zones, day 1
     python run_dispatch.py --zones DE00,FR00 --start-day 10 --end-day 10   # a single day (10th)
     python run_dispatch.py --start-day 10 --end-day 16        # a 7-day horizon (168 h)
     python run_dispatch.py --zones DE00 --uc            # unit commitment (min up/down time)
@@ -22,7 +22,7 @@ def parse_args() -> RunConfig:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--zones", default=None,
-                   help="comma-separated zone codes (default: all 23)")
+                   help="comma-separated zone codes (default: all 20)")
     p.add_argument("--start-day", type=int, default=None,
                    help="first day of a multi-day horizon (1-364)")
     p.add_argument("--end-day", type=int, default=None,
